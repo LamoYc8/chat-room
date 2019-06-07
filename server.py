@@ -69,6 +69,8 @@ def set_nickname(key, mask):
             data.outb = b''
             if data.nick_name:
                 data.conn = True
+                tellOthers(key, '[System message:' + data.nick_name.decode('utf-8') +' entered!]')
+
             
 
 def check_nickname(nick_name):
@@ -78,16 +80,33 @@ def check_nickname(nick_name):
     else:
         return True
 
+def tellOthers(selkey, contents):
+    for k,v in socket_dict.items():
+        if k != selkey.data.nick_name:
+            try:
+                sel.get_key(v).data.outb = bytes(contents, 'utf-8')
+            except:
+                print('Error comes here!')
 
 def service_conn(key, mask):
     sock = key.fileobj
     data = key.data
 
     # TODO
-    pass
+    if mask & selectors.EVENT_READ:
+        recv_data = sock.recv(1024)
+        if recv_data:
+            print('Receieved from ', data.addr, repr(recv_data))
+    if mask & selectors.EVENT_WRITE:
+        if data.outb:
+            sock.sendall(data.outb)
+            data.outb = b''
 
 
 if __name__ == '__main__':
     sel = selectors.DefaultSelector()
-    socket_dict = dict()
+    socket_dict = dict() # Storing all alive connections
+    """
+    {nick_name:sock_object}
+    """
     main()
