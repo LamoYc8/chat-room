@@ -37,6 +37,9 @@ def set_name(key, mask):
             if recv_data == b"Accepted":
                 print('Received from server: ', repr(recv_data), " your connection ", data.nick_name,"Let's chatting!")
                 data.conn = True
+            else:
+                print('This nick name is occupied, please try another one!')
+                data.nick_name =b''
         except ConnectionError:
             print('Lost connection!')
             sel.unregister(sock)
@@ -83,7 +86,6 @@ if __name__=='__main__':
     host, port = '127.0.0.1', 7324
 
     sel = selectors.DefaultSelector()
-    kb_nick_name = None
     main()
 
     

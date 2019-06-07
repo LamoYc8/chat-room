@@ -13,8 +13,7 @@ def main():
     lssock.setblocking(False)
     print('listerning on: ', (host, port))
 
-    sel.register(lssock, selectors.EVENT_READ,data=None) #Checking (把刚生成的lssock连接对象注册到select连接列表中，并交给accept函数处理)
-    # here or later to call accept_conn function
+    sel.register(lssock, selectors.EVENT_READ,data=None) 
 
     try:
         while True:
@@ -27,7 +26,6 @@ def main():
                     if not selkey.data.nick_name or selkey.data.conn is False:
                         set_nickname(selkey, mask)
                     else:
-                        pass
                         service_conn(selkey, mask)
     except KeyboardInterrupt:
         print('Keyboard interrupt, exiting!')
@@ -46,8 +44,6 @@ def accept_conn(sock):
     sel.register(conn, events, data=types.SimpleNamespace(addr=addr, nick_name=b'', intb=b'', outb=b'', conn=False))
 
 
-# TODO !!!!!!!!!! First need to check the nickname before boardcasting
-# 6.7 2019 
 def set_nickname(key, mask):
     sock = key.fileobj
     data = key.data
@@ -87,18 +83,8 @@ def service_conn(key, mask):
     sock = key.fileobj
     data = key.data
 
-    # TODO 
-    if mask & selectors.EVENT_READ:
-        recv_data = sock.recv(1024)
-        if recv_data:
-            data += recv_data
-        else:
-            print()
-    if mask & selectors.EVENT_WRITE:
-        if data:
-            print()
-            sock.send(data)
-            # TODO 
+    # TODO
+    pass
 
 
 if __name__ == '__main__':
