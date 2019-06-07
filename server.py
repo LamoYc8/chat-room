@@ -1,5 +1,6 @@
 import socket
 import selectors
+import types
 
 def main():
     # TODO When finish the project changing the host to ''
@@ -12,44 +13,95 @@ def main():
     lssock.setblocking(False)
     print('listerning on: ', (host, port))
 
-    sel.register(lssock, selectors.EVENT_READ,data=None)
-
+    sel.register(lssock, selectors.EVENT_READ,data=None) #Checking (把刚生成的lssock连接对象注册到select连接列表中，并交给accept函数处理)
+    # here or later to call accept_conn function
 
     try:
         while True:
-            events = sel.select(timeout=None)
+            # wait until some registered file objects become ready or the timeout expires
+            events = sel.select(timeout=None) 
             for selkey, mask in events:
                 if selkey.data is None:
                     accept_conn(selkey.fileobj)
                 else:
-                    service_conn(selkey, mask)
+                    if not selkey.data.nick_name or selkey.data.conn is False:
+                        set_nickname(selkey, mask)
+                    else:
+                        pass
+                        service_conn(selkey, mask)
     except KeyboardInterrupt:
         print('Keyboard interrupt, exiting!')
     finally:
         sel.close()
 
+
 def accept_conn(sock):
-    pass
+    conn, addr = sock.accept()
+    # nick_name = conn.recv(1024) # Receive the unique nick_name from clients
+    print('Accepted connection from ', addr)
+    # print('Welcome ',nick_name, ", Let's start chatting!") # TODO broadcasting later
+    conn.setblocking(False)
+
+    events = selectors.EVENT_READ|selectors.EVENT_WRITE
+    sel.register(conn, events, data=types.SimpleNamespace(addr=addr, nick_name=b'', intb=b'', outb=b'', conn=False))
+
+
+# TODO !!!!!!!!!! First need to check the nickname before boardcasting
+# 6.7 2019 
+def set_nickname(key, mask):
+    sock = key.fileobj
+    data = key.data
+
+    # TODO 
+    if mask & selectors.EVENT_READ:
+        recv_data = sock.recv(1024)
+        if recv_data:
+            if check_nickname(recv_data):
+                data.nick_name = recv_data
+                socket_dict[data.nick_name] = sock
+                data.outb = b'Accepted'
+            else:
+                data.outb = b'Rejected'
+
+        else:
+            pass
+            # print("Waiting for the user to set up a nick name.")
+    if mask & selectors.EVENT_WRITE:
+        if data.outb:
+            print('Sending checking result ', repr(data.outb),' to ', data.addr )
+            sock.sendall(data.outb)
+            data.outb = b''
+            if data.nick_name:
+                data.conn = True
+            
+
+def check_nickname(nick_name):
+    nick_name.decode('utf-8')
+    if nick_name in socket_dict.keys():
+        return False
+    else:
+        return True
 
 
 def service_conn(key, mask):
-    pass
+    sock = key.fileobj
+    data = key.data
 
-
-    # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    #     s.bind((host, port))
-    #     s.listen()
-    #     conn,addr = s.accept()
-
-    #     with conn:
-    #         print('Connected by ', addr)
-    #         while True:
-    #             data = conn.recv(1024)
-    #             if not data:
-    #                 break
-    #             conn.sendall(data)
+    # TODO 
+    if mask & selectors.EVENT_READ:
+        recv_data = sock.recv(1024)
+        if recv_data:
+            data += recv_data
+        else:
+            print()
+    if mask & selectors.EVENT_WRITE:
+        if data:
+            print()
+            sock.send(data)
+            # TODO 
 
 
 if __name__ == '__main__':
     sel = selectors.DefaultSelector()
+    socket_dict = dict()
     main()
