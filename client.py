@@ -2,6 +2,66 @@ import socket
 import sys
 import selectors
 import types
+
+
+class Client (object):
+    
+    def __init__(self):
+
+        self.sel = selectors.DefaultSelector()
+        server_addr = ('127.0.0.1', 7324)
+
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setblocking(False)
+        self.sock.connect_ex(server_addr)
+        events = selectors.EVENT_READ|selectors.EVENT_WRITE
+
+        data = types.SimpleNamespace(nick_name=b'', conn=False, intb=list(), outb=b'')
+        self.sel.register(self.sock, events, data=data)
+
+
+    def _pick_socket(self):
+        # return (selkey, mask) 
+        while True:
+            events = self.sel.select(timeout=1)
+            if events:
+                for selk, mask in events:
+                    return selk, mask
+
+        
+    def set_name(self, nick_name):
+        selk, mask = self._pick_socket()
+        sock = selk.fileobj
+        data = selk.data
+
+        if mask & selectors.EVENT_READ:
+            try:
+                recv_data = sock.recv(1024)
+                if recv_data == b"Accepted":
+                    # print('Received from server: ', repr(recv_data), " your connection ", data.nick_name,"Let's chatting!")
+                    data.conn = True
+                    return True
+                elif recv_data == b'Rejected':
+                    # print('This nick name is occupied, please try another one!')
+                    data.nick_name =b''
+                    return False
+            except ConnectionResetError:
+                sys.exit(1)
+                sel.unregister(sock)
+                sock.close()
+                print('Lost connection, Restart the system please!')
+                start_conn(host, port)
+            except ConnectionRefusedError:
+                print('Connection refused!') 
+                sys.exit(1)      
+
+        if mask & selectors.EVENT_WRITE:
+            if not data.nick_name:
+                data.nick_name = bytes(nick_name,'utf-8')
+                sock.sendall(data.nick_name)
+        
+
+
 def main():
 
     start_conn(host, port)
@@ -18,6 +78,8 @@ def main():
                         set_name(selkey,mask)
                     else:
                         service_conn(selkey, mask)
+                        if data.intb:
+                            print('Broadcasting: ' , data.intb.pop(0))
             if not sel.get_map(): # What is the usage of get_map()
                 break
     except KeyboardInterrupt:
@@ -70,7 +132,7 @@ def start_conn(host, port):
     sock.connect_ex(server_addr)
     events = selectors.EVENT_READ|selectors.EVENT_WRITE
 
-    data = types.SimpleNamespace(nick_name=b'', conn=False, intb=b'', outb=b'')
+    data = types.SimpleNamespace(nick_name=b'', conn=False, intb=list(), outb=b'')
     sel.register(sock, events, data=data)
     
      
@@ -83,7 +145,8 @@ def service_conn(key, mask):
     if mask & selectors.EVENT_READ:
         recv_data = sock.recv(1024)
         if recv_data:
-            # TODO How to distinct the wisper from the boardcast 
+            # TODO How to distinct the wisper from the boardcast
+            data.intb.append(recv_data) 
             print('Received from server: ', repr(recv_data))
     
     if mask & selectors.EVENT_WRITE:

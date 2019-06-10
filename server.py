@@ -37,12 +37,11 @@ def accept_conn(sock):
     conn, addr = sock.accept()
     # nick_name = conn.recv(1024) # Receive the unique nick_name from clients
     print('Accepted connection from ', addr)
-    # print('Welcome ',nick_name, ", Let's start chatting!") # TODO broadcasting later
     conn.setblocking(False)
 
     events = selectors.EVENT_READ|selectors.EVENT_WRITE
-    sel.register(conn, events, data=types.SimpleNamespace(addr=addr, nick_name=b'', intb=b'', outb=b'', conn=False))
-
+    sel.register(conn, events, data=types.SimpleNamespace(addr=addr, nick_name=b'', intb=list(), outb=b'', conn=False))
+    # System messages use outb directly, others like broadcast and server_mes use intb list
 
 def set_nickname(key, mask):
     sock = key.fileobj
@@ -65,11 +64,11 @@ def set_nickname(key, mask):
     if mask & selectors.EVENT_WRITE:
         if data.outb:
             print('Sending checking result ', repr(data.outb),' to ', data.addr )
-            sock.send(data.outb)
-            data.outb = b''
+            sent = sock.send(data.outb)
+            data.outb = data.outb[sent:]
             if data.nick_name:
                 data.conn = True
-                tellOthers(key, '[System message:' + data.nick_name.decode('utf-8') +' entered!]')
+                server_mes(key, '[System message:' + data.nick_name.decode('utf-8') +' entered!]')
 
             
 
@@ -84,33 +83,35 @@ def service_conn(key, mask):
     sock = key.fileobj
     data = key.data
 
-    # TODO
     if mask & selectors.EVENT_READ:
         recv_data = sock.recv(1024)
         if recv_data:
             print('Receieved from ', data.addr, repr(recv_data))
-            broadcast(recv_data)
+            # TODO Distinct wishper and broadcast later
+            broadcast(key,recv_data)
     if mask & selectors.EVENT_WRITE:
+        if not data.outb and data.intb:
+            data.outb = data.intb.pop(0)
         if data.outb:
-            sock.send(data.outb)
-            data.outb = b''
-        else:
-            if data.intb:
-                data.outb = data.intb
-                data.intb = b''
+            sent = sock.send(data.outb)
+            data.outb = data.outb[sent:]
             
 
-def tellOthers(selkey, contents):
+def server_mes(selkey, content):
+    """
+    Works for system messages so far, using outb directly
+    """
     for k,v in socket_dict.items():
         if k != selkey.data.nick_name:
             try:
-                sel.get_key(v).data.outb = bytes(contents, 'utf-8')
+                sel.get_key(v).data.outb = bytes(content, 'utf-8')
             except:
                 print('Error comes here!')
 
-def broadcast(message):
+def broadcast(selkey, message):
     for k,v in socket_dict.items():
-        sel.get_key(v).data.intb = message
+        if k != selkey.data.nick_name:
+            sel.get_key(v).data.intb.append(message) # message is byte[]
     
 
 if __name__ == '__main__':
