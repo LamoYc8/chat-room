@@ -47,32 +47,34 @@ def set_nickname(key, mask):
     sock = key.fileobj
     data = key.data
 
-    # TODO 
-    if mask & selectors.EVENT_READ:
-        recv_data = sock.recv(1024)
-        if recv_data:
-            if check_nickname(recv_data):
-                data.nick_name = recv_data
-                socket_dict[data.nick_name] = sock
-                data.outb = b'Accepted'
+    try:
+        if mask & selectors.EVENT_READ:
+            recv_data = sock.recv(1024)
+            if recv_data:
+                if _check_nickname(recv_data):
+                    data.nick_name = recv_data
+                    socket_dict[data.nick_name] = sock
+                    data.outb = b'Accepted'
+                else:
+                    data.outb = b'Rejected'
             else:
-                data.outb = b'Rejected'
+                pass
+                # print("Waiting for the user to set up a nick name.")
+        if mask & selectors.EVENT_WRITE:
+            if data.outb:
+                print('Sending checking result ', repr(data.outb),' to ', data.addr )
+                sent = sock.send(data.outb)
+                data.outb = data.outb[sent:]
+                if data.nick_name:
+                    data.conn = True
+                    server_mes(key, 'System message: ' + data.nick_name.decode('utf-8') +' enters the room!\n')
+    except ConnectionError:
+        print('Closing connection: ', data.addr)
+        sel.unregister(sock)
+        sock.close()
+    
 
-        else:
-            pass
-            # print("Waiting for the user to set up a nick name.")
-    if mask & selectors.EVENT_WRITE:
-        if data.outb:
-            print('Sending checking result ', repr(data.outb),' to ', data.addr )
-            sent = sock.send(data.outb)
-            data.outb = data.outb[sent:]
-            if data.nick_name:
-                data.conn = True
-                server_mes(key, '[System message:' + data.nick_name.decode('utf-8') +' entered!]')
-
-            
-
-def check_nickname(nick_name):
+def _check_nickname(nick_name):
     nick_name.decode('utf-8')
     if nick_name in socket_dict.keys():
         return False
@@ -86,9 +88,10 @@ def service_conn(key, mask):
     if mask & selectors.EVENT_READ:
         recv_data = sock.recv(1024)
         if recv_data:
-            print('Receieved from ', data.addr, repr(recv_data))
+            msg = data.nick_name.decode('utf-8') + ' said: ' + recv_data.decode('utf-8')
+            print('Receieved from ', msg)
             # TODO Distinct wishper and broadcast later
-            broadcast(key,recv_data)
+            broadcast(key,msg.encode('utf-8'))
     if mask & selectors.EVENT_WRITE:
         if not data.outb and data.intb:
             data.outb = data.intb.pop(0)
