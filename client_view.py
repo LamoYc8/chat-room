@@ -1,3 +1,4 @@
+import json
 import sys
 import time
 from threading import Thread
@@ -156,18 +157,22 @@ class chat_view(object):
 
     def receive_message(self):
         while True:
-            time.sleep(0.5)
+            time.sleep(0.1)
             if self.client.receive() == -1:
                 break
 
             if self.client.data.intb:
-                msg = self.client.data.intb.pop(0)
-
                 patnMsg = 'From server: '+ time.strftime("%Y-%m-%d %H:%M:%S",
                                 time.localtime()) + '\n '
                 self.txtMsgList.config(state='normal')
                 self.txtMsgList.insert(tk.END, patnMsg)
-                self.txtMsgList.insert(tk.END, msg.decode('utf-8'))
+
+                msg = self.client.data.intb.pop(0).decode('utf-8')
+                msg =msg.split('\n')
+                
+                for i in msg:
+                    self.txtMsgList.insert(tk.END, i +'\n')
+
                 self.txtMsgList.config(state='disabled')
             
     def p2p_message(self):

@@ -1,3 +1,4 @@
+import json
 import socket
 import selectors
 import sys
@@ -44,7 +45,7 @@ def accept_conn(sock):
 
     events = selectors.EVENT_READ|selectors.EVENT_WRITE
     sel.register(conn, events, data=types.SimpleNamespace(addr=addr, nick_name=b'', intb=list(), outb=b'', conn=False))
-    # System messages use outb directly, others like broadcast and tellOthers use intb list
+    # System messages use outb directly, others like tellOthers use intb list
 
 def set_nickname(key, mask):
     sock = key.fileobj
@@ -70,7 +71,9 @@ def set_nickname(key, mask):
                 data.outb = data.outb[sent:]
                 if data.nick_name:
                     data.conn = True
-                    tellOthers(key, 'System message: ' + data.nick_name.decode('utf-8') +' enters the room!\n')
+                    sys_msg('System message: ' + data.nick_name.decode('utf-8') +' enters the room!\n')
+                    tellOthers(key, getClients(),include=True)
+                    # TODO list of online client
     except ConnectionError:
         print('Closing connection: ', data.addr)
         sel.unregister(sock)
@@ -94,14 +97,15 @@ def service_conn(key, mask):
             if recv_data:
                 msg = data.nick_name.decode('utf-8') + ' said: ' + recv_data.decode('utf-8')
                 print('Received from ', data.addr, repr(recv_data))
-                # TODO Distinct wishper and broadcast later
-                broadcast(key,msg.encode('utf-8'))
+                # TODO Distinct wishper and tellOthers later
+                tellOthers(key,msg.encode('utf-8'))
             else:
                 print(data.nick_name.decode('utf-8'), 'lost connection!')
                 sel.unregister(sock)
                 sock.close()
                 socket_dict.pop(data.nick_name)
-                tellOthers(key, 'System message: ' + data.nick_name.decode('utf-8') + ' logged out!\n' )
+                sys_msg('System message: ' + data.nick_name.decode('utf-8') + ' logged out!\n' )
+                tellOthers(key, getClients())
 
         if mask & selectors.EVENT_WRITE:
             if not data.outb and data.intb:
@@ -109,32 +113,52 @@ def service_conn(key, mask):
             if data.outb:
                 sent = sock.send(data.outb)
                 data.outb = data.outb[sent:]
+
     except ConnectionError as e:
         error_type, error_value, trace_back = sys.exc_info()
         print(data.nick_name.decode('utf-8'), ' ', error_value)
         sel.unregister(sock)
         sock.close()
         socket_dict.pop(data.nick_name)
-        tellOthers(key, 'System message: ' + data.nick_name.decode('utf-8') + ' logged out!\n' )
-            
+        sys_msg('System message: ' + data.nick_name.decode('utf-8') + ' logged out!\n' )
+        tellOthers(key, getClients())
 
-def tellOthers(selkey, content):
+
+def sys_msg(message):
     """
     Works for system messages so far, using outb directly
     """
-    for k,v in socket_dict.items():
-        if k != selkey.data.nick_name:
-            try:
-                sel.get_key(v).data.outb = bytes(content, 'utf-8')
-            except:
-                print('Error comes here!')
 
-def broadcast(selkey, message):
-    # message b''
-    for k,v in socket_dict.items():
-        if k != selkey.data.nick_name:
-            sel.get_key(v).data.intb.append(message) # message is byte[]
+    for k, v in socket_dict.items():
+        try:
+            sel.get_key(v).data.outb = bytes(message, 'utf-8')
+        except Exception as e:
+            print('sys_msg got errors!')
+            error_type, error_value, trace_back = sys.exc_info()
+            print(error_value)
+
+def tellOthers(selkey, message, include=False):
+    """
+    Using intb list to queue all the messages
+    b'' or a list of online clients
+    """
+    if isinstance(message, list):
+        message = json.dumps(message).encode('utf-8')
     
+    if include:
+        for k,v in socket_dict.items():
+            sel.get_key(v).data.intb.append(message) 
+    else:
+        for k,v in socket_dict.items():
+            if k != selkey.data.nick_name:
+                sel.get_key(v).data.intb.append(message) 
+
+def getClients():
+    onlines = []
+    for key in socket_dict.keys():
+        onlines.append(key.decode('utf-8'))
+
+    return onlines
 
 if __name__ == '__main__':
     sel = selectors.DefaultSelector()
