@@ -93,9 +93,15 @@ def service_conn(key, mask):
             recv_data = sock.recv(1024)
             if recv_data:
                 msg = data.nick_name.decode('utf-8') + ' said: ' + recv_data.decode('utf-8')
-                print('Receieved from ', data.addr, repr(recv_data))
+                print('Received from ', data.addr, repr(recv_data))
                 # TODO Distinct wishper and broadcast later
                 broadcast(key,msg.encode('utf-8'))
+            else:
+                print(data.nick_name.decode('utf-8'), 'lost connection!')
+                sel.unregister(sock)
+                sock.close()
+                socket_dict.pop(data.nick_name)
+                tellOthers(key, 'System message: ' + data.nick_name.decode('utf-8') + ' logged out!\n' )
 
         if mask & selectors.EVENT_WRITE:
             if not data.outb and data.intb:
@@ -105,10 +111,11 @@ def service_conn(key, mask):
                 data.outb = data.outb[sent:]
     except ConnectionError as e:
         error_type, error_value, trace_back = sys.exc_info()
-        print(error_value)
+        print(data.nick_name.decode('utf-8'), ' ', error_value)
         sel.unregister(sock)
         sock.close()
-    
+        socket_dict.pop(data.nick_name)
+        tellOthers(key, 'System message: ' + data.nick_name.decode('utf-8') + ' logged out!\n' )
             
 
 def tellOthers(selkey, content):

@@ -61,7 +61,7 @@ class Client (object):
             self.sel.unregister(self.sock)
             self.sock.shutdown(2)
             self.sock.close()
-        except ConnectionError:
+        except Exception:
             raise
         finally:
             self.sel.close()

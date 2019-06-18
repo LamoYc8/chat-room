@@ -38,9 +38,13 @@ class login_view(object):
         if tk.messagebox.askokcancel('','Are you sure to exit?'):
             self.root.destroy()
             if self.client:
-                self.client.disconnect()
-
-            # sys.exit(0)
+                try:
+                    self.client.disconnect()
+                except (ConnectionError,Exception) as e:
+                    error_type, error_value, trace_back = sys.exc_info()
+                    print(error_value)
+                
+                    
 
     def _get_nickname(self):
         return self.nameE.get()
@@ -123,8 +127,12 @@ class chat_view(object):
     def log_out(self):
         if tk.messagebox.askokcancel('', 'Do you want to log out?'):
             self.root.destroy()
-            self.client.disconnect() 
-
+            try:
+                self.client.disconnect()
+            except (ConnectionError, Exception) as e:
+                error_type, error_value, trace_back = sys.exc_info()
+                print(error_value)
+            
     def _getMsgType(self):
         return self.txtMsgType.get(1.0, tk.END)
         
@@ -164,6 +172,12 @@ class chat_view(object):
             
     def p2p_message(self):
         pass
+
+class dialog_view(object):
+    def __init__(self, client):
+        self.root = tk.Tk()
+        
+        
 
 
 
