@@ -1,5 +1,6 @@
 import socket
 import selectors
+import sys
 import types
 
 def main():
@@ -29,6 +30,8 @@ def main():
                         service_conn(selkey, mask)
     except KeyboardInterrupt:
         print('Keyboard interrupt, exiting!')
+    except ConnectionError as c:
+        print('Connection error!')
     finally:
         sel.close()
 
@@ -41,7 +44,7 @@ def accept_conn(sock):
 
     events = selectors.EVENT_READ|selectors.EVENT_WRITE
     sel.register(conn, events, data=types.SimpleNamespace(addr=addr, nick_name=b'', intb=list(), outb=b'', conn=False))
-    # System messages use outb directly, others like broadcast and server_mes use intb list
+    # System messages use outb directly, others like broadcast and tellOthers use intb list
 
 def set_nickname(key, mask):
     sock = key.fileobj
@@ -53,7 +56,7 @@ def set_nickname(key, mask):
             if recv_data:
                 if _check_nickname(recv_data):
                     data.nick_name = recv_data
-                    socket_dict[data.nick_name] = sock
+                    socket_dict[data.nick_name] = sock # Appending to the dict of all the sockets
                     data.outb = b'Accepted'
                 else:
                     data.outb = b'Rejected'
@@ -67,7 +70,7 @@ def set_nickname(key, mask):
                 data.outb = data.outb[sent:]
                 if data.nick_name:
                     data.conn = True
-                    server_mes(key, 'System message: ' + data.nick_name.decode('utf-8') +' enters the room!\n')
+                    tellOthers(key, 'System message: ' + data.nick_name.decode('utf-8') +' enters the room!\n')
     except ConnectionError:
         print('Closing connection: ', data.addr)
         sel.unregister(sock)
@@ -82,25 +85,33 @@ def _check_nickname(nick_name):
         return True
 
 def service_conn(key, mask):
-    sock = key.fileobj
-    data = key.data
+    try:
+        sock = key.fileobj
+        data = key.data
 
-    if mask & selectors.EVENT_READ:
-        recv_data = sock.recv(1024)
-        if recv_data:
-            msg = data.nick_name.decode('utf-8') + ' said: ' + recv_data.decode('utf-8')
-            print('Receieved from ', msg)
-            # TODO Distinct wishper and broadcast later
-            broadcast(key,msg.encode('utf-8'))
-    if mask & selectors.EVENT_WRITE:
-        if not data.outb and data.intb:
-            data.outb = data.intb.pop(0)
-        if data.outb:
-            sent = sock.send(data.outb)
-            data.outb = data.outb[sent:]
+        if mask & selectors.EVENT_READ:
+            recv_data = sock.recv(1024)
+            if recv_data:
+                msg = data.nick_name.decode('utf-8') + ' said: ' + recv_data.decode('utf-8')
+                print('Receieved from ', data.addr, repr(recv_data))
+                # TODO Distinct wishper and broadcast later
+                broadcast(key,msg.encode('utf-8'))
+
+        if mask & selectors.EVENT_WRITE:
+            if not data.outb and data.intb:
+                data.outb = data.intb.pop(0)
+            if data.outb:
+                sent = sock.send(data.outb)
+                data.outb = data.outb[sent:]
+    except ConnectionError as e:
+        error_type, error_value, trace_back = sys.exc_info()
+        print(error_value)
+        sel.unregister(sock)
+        sock.close()
+    
             
 
-def server_mes(selkey, content):
+def tellOthers(selkey, content):
     """
     Works for system messages so far, using outb directly
     """
@@ -112,6 +123,7 @@ def server_mes(selkey, content):
                 print('Error comes here!')
 
 def broadcast(selkey, message):
+    # message b''
     for k,v in socket_dict.items():
         if k != selkey.data.nick_name:
             sel.get_key(v).data.intb.append(message) # message is byte[]

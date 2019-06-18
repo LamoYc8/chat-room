@@ -20,12 +20,14 @@ class Client (object):
         self.sel.register(self.sock, events, data=self.data)
 
     def _pick_socket(self):
-        # return (selkey, mask) 
+        # return (selkey, mask) or None
         while True:
             events = self.sel.select(timeout=1)
             if events:
                 for selk, mask in events:
                     return selk, mask
+            if not self.sel.get_map():
+                break
 
         
     def set_name(self, nick_name):
@@ -44,15 +46,8 @@ class Client (object):
                     # print('This nick name is occupied, please try another one!')
                     data.nick_name =b''
                     return False
-            except ConnectionResetError:
-                sys.exit(1)
-                sel.unregister(sock)
-                sock.close()
-                print('Lost connection, Restart the system please!')
-                start_conn(host, port)
             except ConnectionRefusedError:
-                print('Connection refused!') 
-                sys.exit(1)      
+                raise     
 
         if mask & selectors.EVENT_WRITE:
             if not data.nick_name:
@@ -61,13 +56,21 @@ class Client (object):
 
     def disconnect(self):
         # broadcasting to others
-        print('Closing connection')
-        self.sel.unregister(self.sock)
-        self.sock.close()
-        self.sel.close()
+        try:
+            print('Closing connection')
+            self.sel.unregister(self.sock)
+            self.sock.shutdown(2)
+            self.sock.close()
+        except ConnectionError:
+            raise
+        finally:
+            self.sel.close()
 
      
     def receive(self):
+        if self._pick_socket() is None:
+            return -1
+
         key, mask = self._pick_socket()
 
         sock = key.fileobj
@@ -95,7 +98,7 @@ class Client (object):
             if data.outb:
                 sent = bytes(data.outb.pop(0), 'utf-8')
                 sock.sendall(sent)
-                
+
 
 if __name__=='__main__':
     """

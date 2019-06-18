@@ -11,6 +11,7 @@ class login_view(object):
 
     def __init__(self):
         
+        self.client = None
         self.root = tk.Tk()
         self.root.geometry()
         self.root.title('Login')
@@ -35,7 +36,11 @@ class login_view(object):
 
     def confirm_to_quit(self):
         if tk.messagebox.askokcancel('','Are you sure to exit?'):
-            self.root.quit()
+            self.root.destroy()
+            if self.client:
+                self.client.disconnect()
+
+            # sys.exit(0)
 
     def _get_nickname(self):
         return self.nameE.get()
@@ -47,8 +52,10 @@ class login_view(object):
             tk.messagebox.showwarning('Alert','Please type a nick name to continue!')
             return
 
-        # Initiate the socket connection here
-        self.client = c.Client()
+        # Initiate the socket connection here for the very first time
+        if self.client is None:
+            self.client = c.Client()
+
         try:
             while True:
                 result = self.client.set_name(name)
@@ -64,12 +71,7 @@ class login_view(object):
         except (ConnectionRefusedError, ConnectionError, ConnectionResetError) as e:
             error_type, error_value, trace_back = sys.exc_info()
             print(error_value)
-            sys.exit(1)
-            raise
-        except KeyboardInterrupt:
-            print('keyboard interrput, exiting!')
-            self.client.sel.close()
-
+            tk.messagebox.showerror('Error',error_value)
 
 class chat_view(object): 
     def __init__(self, client):
@@ -120,8 +122,8 @@ class chat_view(object):
 
     def log_out(self):
         if tk.messagebox.askokcancel('', 'Do you want to log out?'):
+            self.root.destroy()
             self.client.disconnect() 
-            self.root.quit()
 
     def _getMsgType(self):
         return self.txtMsgType.get(1.0, tk.END)
@@ -147,17 +149,19 @@ class chat_view(object):
     def receive_message(self):
         while True:
             time.sleep(0.5)
-            self.client.receive()
+            if self.client.receive() == -1:
+                break
+
             if self.client.data.intb:
                 msg = self.client.data.intb.pop(0)
 
                 patnMsg = 'From server: '+ time.strftime("%Y-%m-%d %H:%M:%S",
-                                  time.localtime()) + '\n '
+                                time.localtime()) + '\n '
                 self.txtMsgList.config(state='normal')
                 self.txtMsgList.insert(tk.END, patnMsg)
                 self.txtMsgList.insert(tk.END, msg.decode('utf-8'))
                 self.txtMsgList.config(state='disabled')
-
+            
     def p2p_message(self):
         pass
 
@@ -171,7 +175,7 @@ if __name__=='__main__':
     except KeyboardInterrupt:
         print('keyboard interrupt')
     finally:
-        sys.exit(1)
+        sys.exit(0)
     
 
 
