@@ -134,13 +134,12 @@ class chat_view(object):
                 error_type, error_value, trace_back = sys.exc_info()
                 print(error_value)
             
-    def _getMsgType(self):
-        return self.txtMsgType.get(1.0, tk.END)
+    def _getMsgContent(self):
+        return self.txtMsgType.get(1.0, tk.INSERT)
         
 
     def send_message(self):
-        sendMsg = self._getMsgType()
-        if sendMsg == '\n':
+        if not self._getMsgContent():
             return
 
         patnMsg = 'You: '+ time.strftime("%Y-%m-%d %H:%M:%S",
@@ -149,9 +148,10 @@ class chat_view(object):
         self.txtMsgList.insert(tk.END, patnMsg)
         self.txtMsgList.insert(tk.END, self.txtMsgType.get('1.0',tk.END))
         self.txtMsgList.config(state='disabled')
+
+        self.client.data.outb.append(self.txtMsgType.get(1.0, tk.END))
         self.txtMsgType.delete('1.0', tk.END)   
 
-        self.client.data.outb.append(sendMsg)
         t_send_server = Thread(target= self.client.send, daemon= True)
         t_send_server.start()
 
@@ -176,25 +176,81 @@ class chat_view(object):
                 self.txtMsgList.config(state='disabled')
             
     def p2p_message(self):
-        pass
+        dv = dialog_view(self, self.client)
+        
 
 class dialog_view(object):
-    def __init__(self, client):
+    def __init__(self, parent, client):
+        self.parent = parent
+        self.client = client
+
         self.root = tk.Tk()
-        
-        
+        self.root.title('Whispering...')
+        self.root.resizable(0,0)
 
+        to_lb = tk.Label(self.root, text='To: ', fg='black')
+        m_lb = tk.Label(self.root, text='Message: ', fg='black')
+        to_lb.grid(row=0, column=0, sticky=tk.W)
+        m_lb.grid(row=1, column=0, sticky=tk.W)
 
+        self.to_E = tk.Entry(self.root)
+        self.to_E.grid(row=0, column=1)
+
+        self.m_E = tk.Text(self.root, width=25, height=5, pady=5)
+        self.m_E.grid(row=1, column=1,rowspan=2)
+
+        send_bt = ttk.Button(self.root, text='Send', command=self.send)
+        send_bt.grid(column=0)
+
+        cancel_bt = ttk.Button(self.root, text='Cancel', command=self.cancel)
+        cancel_bt.grid(column=0)
+
+        self.root.mainloop()
+        
+    def send(self):
+        if not self.to_E.get():
+            tk.messagebox.showwarning('Warning', 'Please choice an object!')
+            return
+
+        if not self.m_E.get(1.0, tk.INSERT):
+            tk.messagebox.showwarning('Warning',
+                'Please fill out the message part!')
+            return 
+
+        to = self.to_E.get()
+        msg = self.m_E.get(1.0, tk.INSERT) # INSERT just including the last char, END including another '\n'
+        self.m_E.delete(1.0, tk.INSERT)
+
+        tellOne = {'To':to, 'From':self.client.data.nick_name.decode('utf-8'), 'M':msg}
+        send = json.dumps(tellOne)
+
+        self.client.outb.append(send)
+
+        patnMsg = 'You: ' + time.strftime("%Y-%m-%d %H:%M:%S",
+                                  time.localtime()) + '\n '
+
+        self.parent.txtMsgList.config(state='normal')
+        self.parent.txtMsgList.insert(tk.END, patnMsg)
+        self.parent.txtMsgList.insert(tk.END, 'To: ' + to + msg)
+
+        t_send_server = Thread(target= self.client.send, daemon= True)
+        t_send_server.start()
+
+        print()
+
+    def cancel(self):
+        self.root.destroy()
 
 if __name__=='__main__':
     try:
         login_view()
-    # client = c.Client()
+        # client = c.Client()
     # chat_view(client)
     except KeyboardInterrupt:
         print('keyboard interrupt')
     finally:
         sys.exit(0)
+    # dialog_view(client)
     
 
 
