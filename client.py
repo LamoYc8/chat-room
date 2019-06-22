@@ -1,3 +1,4 @@
+import json
 import selectors
 import socket
 import sys
@@ -16,7 +17,7 @@ class Client (object):
         self.sock.connect_ex(server_addr)
         events = selectors.EVENT_READ|selectors.EVENT_WRITE
 
-        self.data = types.SimpleNamespace(nick_name=b'', conn=False, intb=list(), outb=list())
+        self.data = types.SimpleNamespace(nick_name=b'', conn=False, intb=list(), outb=list(), onlines=None)
         self.sel.register(self.sock, events, data=self.data)
 
     def _pick_socket(self):
@@ -57,7 +58,7 @@ class Client (object):
     def disconnect(self):
         # broadcasting to others
         try:
-            print('Closing connection')
+            print('Closing connection to the server.')
             self.sel.unregister(self.sock)
             self.sock.shutdown(2)
             self.sock.close()
@@ -66,7 +67,7 @@ class Client (object):
         finally:
             self.sel.close()
 
-     
+# receive and send can be combined together
     def receive(self):
         if self._pick_socket() is None:
             return -1
@@ -79,14 +80,10 @@ class Client (object):
         if mask & selectors.EVENT_READ:
             recv_data = sock.recv(1024)
             if recv_data:
-                data.intb.append(recv_data) 
-        
-        # if mask & selectors.EVENT_WRITE:
-        #     if not data.outb:
-        #         messages = input('Typing here: ')
-        #         data.outb = bytes(messages, 'utf-8')
-        #         sock.sendall(data.outb)
-        #         data.outb = b''
+                recv_data = recv_data.split(b'\n')
+                for item in recv_data:
+                    if item:
+                        data.intb.append(item) 
 
     def send(self):
         key, mask = self._pick_socket()

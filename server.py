@@ -62,8 +62,10 @@ def set_nickname(key, mask):
                 else:
                     data.outb = b'Rejected'
             else:
-                pass
-                # print("Waiting for the user to set up a nick name.")
+                print('Lost connection to: ', data.addr, ' and this user haven\'t logged in before.')
+                sel.unregister(sock)
+                sock.close()
+
         if mask & selectors.EVENT_WRITE:
             if data.outb:
                 print('Sending checking result ', repr(data.outb),' to ', data.addr )
@@ -72,10 +74,10 @@ def set_nickname(key, mask):
                 if data.nick_name:
                     data.conn = True
                     sys_msg('System message: ' + data.nick_name.decode('utf-8') +' enters the room!\n')
-                    tellOthers(key, getClients(),include=True)
-                    # TODO list of online client
+                    tellOthers(key, getClients(), include=True)
+                    
     except ConnectionError:
-        print('Closing connection: ', data.addr)
+        print('Lost connection: ', data.addr)
         sel.unregister(sock)
         sock.close()
     
@@ -100,7 +102,7 @@ def service_conn(key, mask):
                 # TODO Distinct wishper and tellOthers later
                 tellOthers(key,msg.encode('utf-8'))
             else:
-                print(data.nick_name.decode('utf-8'), 'lost connection!')
+                print('Closing connection: ', data.nick_name.decode('utf-8'), data.addr)
                 sel.unregister(sock)
                 sock.close()
                 socket_dict.pop(data.nick_name)
@@ -111,8 +113,8 @@ def service_conn(key, mask):
             if not data.outb and data.intb:
                 data.outb = data.intb.pop(0)
             if data.outb:
-                sent = sock.send(data.outb)
-                data.outb = data.outb[sent:]
+                sock.sendall(data.outb)
+                data.outb = b''
 
     except ConnectionError as e:
         error_type, error_value, trace_back = sys.exc_info()
@@ -131,7 +133,7 @@ def sys_msg(message):
 
     for k, v in socket_dict.items():
         try:
-            sel.get_key(v).data.outb = bytes(message, 'utf-8')
+            sel.get_key(v).data.outb = message.encode('utf-8')
         except Exception as e:
             print('sys_msg got errors!')
             error_type, error_value, trace_back = sys.exc_info()

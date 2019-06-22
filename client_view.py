@@ -148,7 +148,7 @@ class chat_view(object):
         self.txtMsgList.insert(tk.END, patnMsg)
         self.txtMsgList.insert(tk.END, self.txtMsgType.get('1.0',tk.END))
         self.txtMsgList.config(state='disabled')
-
+        # outb is a str list containing all of the user msgs
         self.client.data.outb.append(self.txtMsgType.get(1.0, tk.END))
         self.txtMsgType.delete('1.0', tk.END)   
 
@@ -161,19 +161,38 @@ class chat_view(object):
             if self.client.receive() == -1:
                 break
 
-            if self.client.data.intb:
+            while self.client.data.intb:
                 patnMsg = 'From server: '+ time.strftime("%Y-%m-%d %H:%M:%S",
                                 time.localtime()) + '\n '
                 self.txtMsgList.config(state='normal')
                 self.txtMsgList.insert(tk.END, patnMsg)
 
                 msg = self.client.data.intb.pop(0).decode('utf-8')
-                msg =msg.split('\n')
-                
-                for i in msg:
-                    self.txtMsgList.insert(tk.END, i +'\n')
+                # msg = json.loads(self.client.data.intb.pop(0).decode('utf-8'))
+                if isinstance(msg, str):
+                    self.txtMsgList.insert(tk.END, msg + '\n')
+                elif isinstance(msg, list):
+                    self.txtMsgList.insert(tk.END, repr(msg) + '\n')
+                    self.client.data.onlines = [one for one in msg if one != self.client.data.nick_name.decode('utf-8')]
 
                 self.txtMsgList.config(state='disabled')
+
+            # if self.client.data.intb:
+            #     patnMsg = 'From server: '+ time.strftime("%Y-%m-%d %H:%M:%S",
+            #                     time.localtime()) + '\n '
+            #     self.txtMsgList.config(state='normal')
+            #     self.txtMsgList.insert(tk.END, patnMsg)
+            #     # TODO json loads here for online clients list
+                
+            #     msg = self.client.data.intb.pop(0).decode('utf-8')
+            #     self.txtMsgList.insert(tk.END, msg+'\n')
+                # b'System message: o enters the room!\n["o"]'
+                # for i in msg:
+                #     self.txtMsgList.insert(tk.END, i +'\n')
+                #     print(i)
+                #     if isinstance(i, list):
+                #         self.client.data.onlines = [one for one in i if one != self.client.data.nick_name.decode('utf-8')]
+                # self.txtMsgList.config(state='disabled')
             
     def p2p_message(self):
         dv = dialog_view(self, self.client)
@@ -218,34 +237,47 @@ class dialog_view(object):
             return 
 
         to = self.to_E.get()
+
+        if not self.find_one(to):
+            tk.messagebox.showerror('Error', 'There is no such person, choice another one!')
+
         msg = self.m_E.get(1.0, tk.INSERT) # INSERT just including the last char, END including another '\n'
         self.m_E.delete(1.0, tk.INSERT)
 
         tellOne = {'To':to, 'From':self.client.data.nick_name.decode('utf-8'), 'M':msg}
-        send = json.dumps(tellOne)
+        sendMsg = json.dumps(tellOne)
 
-        self.client.outb.append(send)
+        self.client.outb.append(sendMsg.encode('utf-8'))
 
         patnMsg = 'You: ' + time.strftime("%Y-%m-%d %H:%M:%S",
                                   time.localtime()) + '\n '
 
         self.parent.txtMsgList.config(state='normal')
         self.parent.txtMsgList.insert(tk.END, patnMsg)
-        self.parent.txtMsgList.insert(tk.END, 'To: ' + to + msg)
+        self.parent.txtMsgList.insert(tk.END, 'To ' + to +': '+ msg)
+        self.parent.txtMsgList.config(state='disabled')
 
-        t_send_server = Thread(target= self.client.send, daemon= True)
-        t_send_server.start()
+        self.m_E.delete(1.0, tk.END)
+        # TODO whispering
+        # t_send_server = Thread(target= self.client.send, daemon= True)
+        # t_send_server.start()
 
         print()
 
     def cancel(self):
         self.root.destroy()
 
+    def find_one(self, name):
+        if name in self.parent.client.data.onlines:
+            return True
+
+        return False
+
 if __name__=='__main__':
     try:
         login_view()
         # client = c.Client()
-    # chat_view(client)
+        # chat_view(client)
     except KeyboardInterrupt:
         print('keyboard interrupt')
     finally:
