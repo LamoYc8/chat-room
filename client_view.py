@@ -140,18 +140,22 @@ class chat_view(object):
 
     def send_message(self):
         if not self._getMsgContent():
+            tk.messagebox.showwarning('','Message box can\'t be empty!')
             return
 
+        send_m_dict = {'To':'default', 
+                       'From':self.client.data.nick_name.decode('utf-8'), 
+                       'M':self.txtMsgType.get(1.0, tk.INSERT)}
+        self.client.data.outb.append(json.dumps(send_m_dict))
+
         patnMsg = 'You: '+ time.strftime("%Y-%m-%d %H:%M:%S",
-                                  time.localtime()) + '\n '
+                                  time.localtime()) + '\n'
         self.txtMsgList.config(state='normal')
         self.txtMsgList.insert(tk.END, patnMsg)
         self.txtMsgList.insert(tk.END, self.txtMsgType.get('1.0',tk.END))
         self.txtMsgList.config(state='disabled')
-        # outb is a str list containing all of the user msgs
-        self.client.data.outb.append(self.txtMsgType.get(1.0, tk.END))
-        self.txtMsgType.delete('1.0', tk.END)   
-
+        self.txtMsgType.delete('1.0', tk.END) 
+        
         t_send_server = Thread(target= self.client.send, daemon= True)
         t_send_server.start()
 
@@ -161,38 +165,32 @@ class chat_view(object):
             if self.client.receive() == -1:
                 break
 
-            while self.client.data.intb:
+            if self.client.data.intb:
                 patnMsg = 'From server: '+ time.strftime("%Y-%m-%d %H:%M:%S",
-                                time.localtime()) + '\n '
+                                    time.localtime()) + '\n'
                 self.txtMsgList.config(state='normal')
                 self.txtMsgList.insert(tk.END, patnMsg)
 
-                msg = self.client.data.intb.pop(0).decode('utf-8')
-                # msg = json.loads(self.client.data.intb.pop(0).decode('utf-8'))
-                if isinstance(msg, str):
-                    self.txtMsgList.insert(tk.END, msg + '\n')
-                elif isinstance(msg, list):
-                    self.txtMsgList.insert(tk.END, repr(msg) + '\n')
-                    self.client.data.onlines = [one for one in msg if one != self.client.data.nick_name.decode('utf-8')]
+                while self.client.data.intb:
+                    msg = self.client.data.intb.pop(0).decode('utf-8')
+                    if 'System message:' in msg:
+                        self.txtMsgList.insert(tk.END, msg + '\n')
+                    else:
+                        msg = json.loads(msg)
+                        if isinstance(msg, dict): # incoming message from other clients
+                            if msg['To'] == 'default':
+                                msg = '{} said: {}'.format(msg['From'], msg['M'])
+                            else:
+                                msg = '{} whispered to you: {}'.format(msg['From'], msg['M'])
+                            self.txtMsgList.insert(tk.END, msg + '\n')
+
+                        elif isinstance(msg, list):
+                            # Update the online-client list
+                            self.txtMsgList.insert(tk.END, 'Online clients: ' + repr(msg) + '\n')
+                            self.client.data.onlines = [one for one in msg if one != self.client.data.nick_name.decode('utf-8')]
 
                 self.txtMsgList.config(state='disabled')
 
-            # if self.client.data.intb:
-            #     patnMsg = 'From server: '+ time.strftime("%Y-%m-%d %H:%M:%S",
-            #                     time.localtime()) + '\n '
-            #     self.txtMsgList.config(state='normal')
-            #     self.txtMsgList.insert(tk.END, patnMsg)
-            #     # TODO json loads here for online clients list
-                
-            #     msg = self.client.data.intb.pop(0).decode('utf-8')
-            #     self.txtMsgList.insert(tk.END, msg+'\n')
-                # b'System message: o enters the room!\n["o"]'
-                # for i in msg:
-                #     self.txtMsgList.insert(tk.END, i +'\n')
-                #     print(i)
-                #     if isinstance(i, list):
-                #         self.client.data.onlines = [one for one in i if one != self.client.data.nick_name.decode('utf-8')]
-                # self.txtMsgList.config(state='disabled')
             
     def p2p_message(self):
         dv = dialog_view(self, self.client)
@@ -238,29 +236,30 @@ class dialog_view(object):
 
         to = self.to_E.get()
 
-        if not self.find_one(to):
+        if to == self.client.data.nick_name.decode('utf-8'):
+            tk.messagebox.showerror('Error', 'Can\'t whisper to yourself!')
+            return
+        elif not self.find_one(to):
             tk.messagebox.showerror('Error', 'There is no such person, choice another one!')
-
+            return
+            
         msg = self.m_E.get(1.0, tk.INSERT) # INSERT just including the last char, END including another '\n'
         self.m_E.delete(1.0, tk.INSERT)
 
         tellOne = {'To':to, 'From':self.client.data.nick_name.decode('utf-8'), 'M':msg}
-        sendMsg = json.dumps(tellOne)
-
-        self.client.outb.append(sendMsg.encode('utf-8'))
+        self.client.data.outb.append(json.dumps(tellOne))
 
         patnMsg = 'You: ' + time.strftime("%Y-%m-%d %H:%M:%S",
-                                  time.localtime()) + '\n '
+                                  time.localtime()) + '\n'
 
         self.parent.txtMsgList.config(state='normal')
         self.parent.txtMsgList.insert(tk.END, patnMsg)
-        self.parent.txtMsgList.insert(tk.END, 'To ' + to +': '+ msg)
+        self.parent.txtMsgList.insert(tk.END, 'Whispered to ' + to +': '+ msg + '\n')
         self.parent.txtMsgList.config(state='disabled')
 
-        self.m_E.delete(1.0, tk.END)
         # TODO whispering
-        # t_send_server = Thread(target= self.client.send, daemon= True)
-        # t_send_server.start()
+        t_send_server = Thread(target= self.client.send, daemon= True)
+        t_send_server.start()
 
         print()
 

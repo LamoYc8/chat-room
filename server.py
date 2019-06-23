@@ -55,7 +55,7 @@ def set_nickname(key, mask):
         if mask & selectors.EVENT_READ:
             recv_data = sock.recv(1024)
             if recv_data:
-                if _check_nickname(recv_data):
+                if _check_nickname(recv_data): 
                     data.nick_name = recv_data
                     socket_dict[data.nick_name] = sock # Appending to the dict of all the sockets
                     data.outb = b'Accepted'
@@ -69,8 +69,8 @@ def set_nickname(key, mask):
         if mask & selectors.EVENT_WRITE:
             if data.outb:
                 print('Sending checking result ', repr(data.outb),' to ', data.addr )
-                sent = sock.send(data.outb)
-                data.outb = data.outb[sent:]
+                sock.sendall(data.outb)
+                data.outb = b''
                 if data.nick_name:
                     data.conn = True
                     sys_msg('System message: ' + data.nick_name.decode('utf-8') +' enters the room!\n')
@@ -83,7 +83,6 @@ def set_nickname(key, mask):
     
 
 def _check_nickname(nick_name):
-    nick_name.decode('utf-8')
     if nick_name in socket_dict.keys():
         return False
     else:
@@ -97,10 +96,17 @@ def service_conn(key, mask):
         if mask & selectors.EVENT_READ:
             recv_data = sock.recv(1024)
             if recv_data:
-                msg = data.nick_name.decode('utf-8') + ' said: ' + recv_data.decode('utf-8')
                 print('Received from ', data.addr, repr(recv_data))
-                # TODO Distinct wishper and tellOthers later
-                tellOthers(key,msg.encode('utf-8'))
+                recv_data = json.loads(recv_data.decode('utf-8'))
+                if recv_data['To'] == 'default':
+                    tellOthers(key, json.dumps(recv_data).encode('utf-8'))
+                else:
+                    whisper(recv_data)
+
+                # msg = data.nick_name.decode('utf-8') + ' said: ' + recv_data.decode('utf-8')
+                # print('Received from ', data.addr, repr(recv_data))
+                # # TODO Distinct wishper and tellOthers later
+                # tellOthers(key,msg.encode('utf-8'))
             else:
                 print('Closing connection: ', data.nick_name.decode('utf-8'), data.addr)
                 sel.unregister(sock)
@@ -109,7 +115,7 @@ def service_conn(key, mask):
                 sys_msg('System message: ' + data.nick_name.decode('utf-8') + ' logged out!\n' )
                 tellOthers(key, getClients())
 
-        if mask & selectors.EVENT_WRITE:
+        if mask & selectors.EVENT_WRITE: # TODO msg type
             if not data.outb and data.intb:
                 data.outb = data.intb.pop(0)
             if data.outb:
@@ -155,6 +161,10 @@ def tellOthers(selkey, message, include=False):
             if k != selkey.data.nick_name:
                 sel.get_key(v).data.intb.append(message) 
 
+def whisper(msg:dict):
+    to = socket_dict.get(msg['To'].encode('utf-8'))
+    sel.get_key(to).data.intb.append(json.dumps(msg).encode('utf-8'))
+
 def getClients():
     onlines = []
     for key in socket_dict.keys():
@@ -166,6 +176,6 @@ if __name__ == '__main__':
     sel = selectors.DefaultSelector()
     socket_dict = dict() # Storing all alive connections
     """
-    {nick_name:sock_object}
+    {b'nick_name':sock_object}
     """
     main()
