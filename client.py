@@ -36,8 +36,8 @@ class Client (object):
         sock = selk.fileobj
         data = selk.data
 
-        if mask & selectors.EVENT_READ:
-            try:
+        try:
+            if mask & selectors.EVENT_READ:
                 recv_data = sock.recv(1024)
                 if recv_data == b"Accepted":
                     # print('Received from server: ', repr(recv_data), " your connection ", data.nick_name,"Let's chatting!")
@@ -45,30 +45,31 @@ class Client (object):
                     return True
                 elif recv_data == b'Rejected':
                     # print('This nick name is occupied, please try another one!')
-                    data.nick_name =b''
+                    data.nick_name = b''
                     return False
-            except ConnectionRefusedError:
-                raise     
 
-        if mask & selectors.EVENT_WRITE:
-            if not data.nick_name:
-                data.nick_name = bytes(nick_name,'utf-8')
-                sock.sendall(data.nick_name)
+            if mask & selectors.EVENT_WRITE:
+                if not data.nick_name:
+                    data.nick_name = bytes(nick_name,'utf-8')
+                    sock.sendall(data.nick_name)
+        except ConnectionError:
+            raise     
+
 
     def disconnect(self):
         # broadcasting to others
         try:
-            print('Closing connection to the server.')
+            print('Ending connection to the server.')
             self.sel.unregister(self.sock)
-            self.sock.shutdown(2)
+            # self.sock.shutdown(2)
             self.sock.close()
-        except Exception:
+        except ConnectionError:
             raise
         finally:
             self.sel.close()
 
 # receive and send can be combined together
-    def receive(self):
+    def receive_send(self):
         if self._pick_socket() is None:
             return -1
 
@@ -77,13 +78,25 @@ class Client (object):
         sock = key.fileobj
         data = key.data
 
-        if mask & selectors.EVENT_READ:
-            recv_data = sock.recv(1024)
-            if recv_data:
-                recv_data = recv_data.split(b'\n')
-                for item in recv_data:
-                    if item:
-                        data.intb.append(item) 
+        try:
+            if mask & selectors.EVENT_READ:
+                recv_data = sock.recv(1024)
+                if recv_data:
+                    recv_data = recv_data.split(b'\n')
+                    for item in recv_data:
+                        if item:
+                            data.intb.append(item)
+                else:
+                    raise ConnectionResetError
+
+            if mask & selectors.EVENT_WRITE:
+                if data.outb:
+                    sent = bytes(data.outb.pop(0), 'utf-8')
+                    sock.sendall(sent)
+
+        except (ConnectionResetError, BrokenPipeError):
+            raise
+        
 
     def send(self):
         key, mask = self._pick_socket()
@@ -91,10 +104,14 @@ class Client (object):
         sock = key.fileobj
         data = key.data
 
-        if mask & selectors.EVENT_WRITE:
-            if data.outb:
-                sent = bytes(data.outb.pop(0), 'utf-8')
-                sock.sendall(sent)
+        try:
+            if mask & selectors.EVENT_WRITE:
+                if data.outb:
+                    sent = bytes(data.outb.pop(0), 'utf-8')
+                    sock.sendall(sent)
+        except (ConnectionError, ConnectionResetError):
+            raise
+        
 
 
 if __name__=='__main__':

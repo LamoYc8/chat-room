@@ -31,10 +31,14 @@ def main():
                         service_conn(selkey, mask)
     except KeyboardInterrupt:
         print('Keyboard interrupt, exiting!')
-    except ConnectionError as c:
-        print('Connection error!')
     finally:
+        for sock in socket_dict.values():
+            sel.unregister(sock)
+            sock.close()
+
         sel.close()
+        print('Server is closing......')
+        sys.exit(0)
 
 
 def accept_conn(sock):
@@ -102,20 +106,15 @@ def service_conn(key, mask):
                     tellOthers(key, json.dumps(recv_data).encode('utf-8'))
                 else:
                     whisper(recv_data)
-
-                # msg = data.nick_name.decode('utf-8') + ' said: ' + recv_data.decode('utf-8')
-                # print('Received from ', data.addr, repr(recv_data))
-                # # TODO Distinct wishper and tellOthers later
-                # tellOthers(key,msg.encode('utf-8'))
             else:
-                print('Closing connection: ', data.nick_name.decode('utf-8'), data.addr)
+                print('Closing connection to ', data.nick_name.decode('utf-8'), data.addr)
                 sel.unregister(sock)
                 sock.close()
                 socket_dict.pop(data.nick_name)
                 sys_msg('System message: ' + data.nick_name.decode('utf-8') + ' logged out!\n' )
                 tellOthers(key, getClients())
 
-        if mask & selectors.EVENT_WRITE: # TODO msg type
+        if mask & selectors.EVENT_WRITE:
             if not data.outb and data.intb:
                 data.outb = data.intb.pop(0)
             if data.outb:

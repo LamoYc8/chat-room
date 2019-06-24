@@ -25,6 +25,7 @@ class login_view(object):
 
         self.nameE = tk.Entry(self.root)
         self.nameE.grid(row=1, column=1)
+        self.nameE.bind('<KeyPress-Return>', self._loginevent)
 
         self.conn_bt = ttk.Button(self.root, text='Connect',command=self.check_login)
         self.conn_bt.grid(columnspan=2, sticky=tk.W)
@@ -44,8 +45,12 @@ class login_view(object):
                 except (ConnectionError,Exception) as e:
                     error_type, error_value, trace_back = sys.exc_info()
                     print(error_value)
+                finally:
+                    sys.exit(0)
                 
-                    
+    def _loginevent(self, event):
+        if event.keysym == 'Return':
+            self.check_login()    
 
     def _get_nickname(self):
         return self.nameE.get()
@@ -73,14 +78,19 @@ class login_view(object):
                 tk.messagebox.showerror('', 'This nick name is occupied, please try another one!')
                 # pop up a alert message box that ask the user to reset a nick name
 
-        except (ConnectionRefusedError, ConnectionError, ConnectionResetError) as e:
+        except ConnectionRefusedError:
             error_type, error_value, trace_back = sys.exc_info()
-            print(error_value)
-            tk.messagebox.showerror('Error',error_value)
+            tk.messagebox.showerror(error_value, 'The server doesn\'t existed!\nPlease ask technicians for help')
+            self.client = None
+        except ConnectionResetError:
+            error_type, error_value, trace_back = sys.exc_info()
+            tk.messagebox.showerror(error_value, 'Lost connection to the server!\nPlease login again!')
+            self.client = None
 
 class chat_view(object): 
     def __init__(self, client):
         self.client = client
+        self.dv = None # child dialog window
 
         self.root = tk.Tk()
         w_width = 640
@@ -130,9 +140,12 @@ class chat_view(object):
             self.root.destroy()
             try:
                 self.client.disconnect()
-            except (ConnectionError, Exception) as e:
+            except ConnectionError:
                 error_type, error_value, trace_back = sys.exc_info()
                 print(error_value)
+            finally:
+                sys.exit(0)
+                
             
     def _getMsgContent(self):
         return self.txtMsgType.get(1.0, tk.INSERT)
@@ -156,14 +169,21 @@ class chat_view(object):
         self.txtMsgList.config(state='disabled')
         self.txtMsgType.delete('1.0', tk.END) 
         
-        t_send_server = Thread(target= self.client.send, daemon= True)
-        t_send_server.start()
 
     def receive_message(self):
         while True:
             time.sleep(0.1)
-            if self.client.receive() == -1:
-                break
+
+            try:
+                if self.client.receive_send() == -1:
+                    break
+            except ConnectionResetError:
+                error_type, error_value, trace_back = sys.exc_info()
+                print(error_value)
+                if tk.messagebox.showerror(error_value, 'Disconnected, please reconnect again!'):
+                    self.root.destroy()
+                    self.client.disconnect()
+                     
 
             if self.client.data.intb:
                 patnMsg = 'From server: '+ time.strftime("%Y-%m-%d %H:%M:%S",
@@ -193,15 +213,15 @@ class chat_view(object):
 
             
     def p2p_message(self):
-        dv = dialog_view(self, self.client)
-        
+        self.dv = dialog_view(self.root, self.client, self)
 
-class dialog_view(object):
-    def __init__(self, parent, client):
+class dialog_view(tk.Toplevel):
+    def __init__(self, parent, client, cls):
         self.parent = parent
         self.client = client
+        self.cls = cls
 
-        self.root = tk.Tk()
+        self.root = tk.Toplevel(self.parent)
         self.root.title('Whispering...')
         self.root.resizable(0,0)
 
@@ -252,22 +272,17 @@ class dialog_view(object):
         patnMsg = 'You: ' + time.strftime("%Y-%m-%d %H:%M:%S",
                                   time.localtime()) + '\n'
 
-        self.parent.txtMsgList.config(state='normal')
-        self.parent.txtMsgList.insert(tk.END, patnMsg)
-        self.parent.txtMsgList.insert(tk.END, 'Whispered to ' + to +': '+ msg + '\n')
-        self.parent.txtMsgList.config(state='disabled')
+        self.cls.txtMsgList.config(state='normal')
+        self.cls.txtMsgList.insert(tk.END, patnMsg)
+        self.cls.txtMsgList.insert(tk.END, 'Whispered to ' + to +': '+ msg + '\n')
+        self.cls.txtMsgList.config(state='disabled')
 
-        # TODO whispering
-        t_send_server = Thread(target= self.client.send, daemon= True)
-        t_send_server.start()
-
-        print()
 
     def cancel(self):
         self.root.destroy()
 
     def find_one(self, name):
-        if name in self.parent.client.data.onlines:
+        if name in self.cls.client.data.onlines:
             return True
 
         return False
@@ -275,13 +290,11 @@ class dialog_view(object):
 if __name__=='__main__':
     try:
         login_view()
-        # client = c.Client()
-        # chat_view(client)
+        
     except KeyboardInterrupt:
         print('keyboard interrupt')
     finally:
         sys.exit(0)
-    # dialog_view(client)
     
 
 
